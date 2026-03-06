@@ -2,8 +2,6 @@ import { checkPermissions, requestPermissions, getCurrentPosition } from "@tauri
 import type { Gps, TerminalInfo } from "./types";
 import { getAmapPosition } from "./amap";
 
-const PRIMARY_TIMEOUT_MS = 5000;
-
 /**
  * 确保定位权限已授予（Android 需要运行时请求）。
  * 返回 true 表示至少获得了粗略定位权限。
@@ -11,11 +9,9 @@ const PRIMARY_TIMEOUT_MS = 5000;
 async function ensureLocationPermission(): Promise<boolean> {
   try {
     let perms = await checkPermissions();
-    // coarseLocation 或 location 任一为 granted 即可
     if (perms.location === "granted" || perms.coarseLocation === "granted") {
       return true;
     }
-    // 尚未授权则请求
     perms = await requestPermissions(["location", "coarseLocation"]);
     return perms.location === "granted" || perms.coarseLocation === "granted";
   } catch {
@@ -23,42 +19,53 @@ async function ensureLocationPermission(): Promise<boolean> {
   }
 }
 
-// 获取当前位置：优先走 Tauri 原生定位，失败后降级高德 JS 定位
-export async function getCurrentGps(timeoutMs: number): Promise<Gps> {
-  // 判断是否运行在 Tauri 环境
-  const isTauri = !!(window as Window & { __TAURI__?: unknown }).__TAURI__;
-
-  // 1. 优先尝试 Tauri 原生定位（通过系统 GPS / 网络定位）
-  if (isTauri) {
-    try {
-      const granted = await ensureLocationPermission();
-      if (granted) {
-        const position = await getCurrentPosition({
-          enableHighAccuracy: true,
-          timeout: Math.min(timeoutMs, PRIMARY_TIMEOUT_MS),
-          maximumAge: 60_000,
-        });
-        return {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-      }
-    } catch (e) {
-      console.warn("Tauri native geolocation failed, falling back to AMap:", e);
-    }
-  }
-
-  // 2. 降级：高德 JS API 定位
+/**
+ * 获取当前位置：
+ * 1. 优先使用高德定位，立即返回结果
+ * 2. 后台静默执行 Tauri 原生定位，成功后通过 onNativeGps 回调通知调用方更新数据
+ *
+ * @param timeoutMs    高德定位超时（毫秒）
+ * @param onNativeGps  可选回调，原生定位成功后调用，用于后台静默更新数据
+ */
+export async function getCurrentGps(
+  timeoutMs: number,
+  onNativeGps?: (gps: NonNullable<Gps>) => void,
+): Promise<Gps> {
+  // 1. 优先使用高德定位
+  let amapGps: Gps = null;
   try {
     const position = await getAmapPosition(timeoutMs);
-    return {
+    amapGps = {
       lat: position.coords.latitude,
       lng: position.coords.longitude,
     };
-  } catch (amapError) {
-    console.error("AMap geolocation also failed:", amapError);
-    return null;
+  } catch {
+    // 高德定位失败，静默处理
   }
+
+  // 2. 后台静默尝试 Tauri 原生定位，成功后通过回调通知
+  const isTauri = !!(window as Window & { __TAURI__?: unknown }).__TAURI__;
+  if (isTauri && onNativeGps) {
+    void (async () => {
+      try {
+        const granted = await ensureLocationPermission();
+        if (!granted) return;
+        const position = await getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 60_000,
+        });
+        onNativeGps({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      } catch {
+        // 原生定位失败，静默忽略
+      }
+    })();
+  }
+
+  return amapGps;
 }
 
 // 根据 UA 推断平台名称
