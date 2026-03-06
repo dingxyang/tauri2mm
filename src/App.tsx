@@ -356,7 +356,7 @@ function App() {
                 加入（Join）
               </button>
               {/* 退出按钮：需要当前设备在线或远程存在该终端记录 */}
-              <button onClick={() => void exit()} disabled={storeLoading || (localStatus !== "online" && !store.terminals[terminalId ?? ""])}>
+              <button onClick={() => void exit()} disabled={storeLoading || (localStatus !== "online" && !store.terminals?.[terminalId ?? ""])}>
                 退出（Exit）
               </button>
             </div>
