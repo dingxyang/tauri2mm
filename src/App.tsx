@@ -162,12 +162,30 @@ function App() {
   }
 
   /**
+   * 原生定位成功后，后台静默更新远程数据中的 GPS
+   */
+  function onNativeGpsUpdate(nativeGps: NonNullable<Gps>) {
+    if (!terminalId) return;
+    void withMergedStore((s) => {
+      const existing = s.terminals?.[terminalId];
+      if (!existing || existing.status !== "online") return s;
+      return {
+        terminals: {
+          ...(s.terminals ?? {}),
+          [terminalId]: { ...existing, gps: nativeGps, last_update: new Date().toISOString() },
+        },
+      };
+    });
+  }
+
+  /**
    * 加入在线列表
    * 获取当前 GPS → 构建完整终端信息（含平台、型号、CPU、内存等）→ 合并写入远程
+   * 高德定位返回后立即上报，原生定位在后台静默更新
    */
   async function join() {
     if (!terminalId) return;
-    const gps = await getCurrentGps(8000);
+    const gps = await getCurrentGps(8000, onNativeGpsUpdate);
     const info = await buildTerminalInfo({
       terminalId,
       status: "online",
@@ -186,6 +204,7 @@ function App() {
    * 心跳续约：定时更新当前终端的 GPS 和 last_update
    * - 使用 heartbeatInFlight 防止并发
    * - 若远程已有该终端记录则增量更新，否则构建最小化记录写入
+   * - 原生定位在后台静默更新
    */
   // @ts-ignore
   async function heartbeat() {
@@ -193,7 +212,7 @@ function App() {
     if (heartbeatInFlight.current) return;
     heartbeatInFlight.current = true;
     try {
-      const gps = await getCurrentGps(8000);
+      const gps = await getCurrentGps(8000, onNativeGpsUpdate);
       const iso = new Date().toISOString();
       await withMergedStore((s) => {
         const existing = s.terminals?.[terminalId];
@@ -221,20 +240,47 @@ function App() {
   /**
    * 退出在线列表
    * 将当前终端的 status 设为 "offline" 并更新 last_update 时间戳
+   * 采用两级降级策略确保远程状态尽量写入成功：
+   *   1. 正常路径：fetch 最新 → merge → save
+   *   2. 降级路径：基于本地缓存数据直接 save
    */
   async function exit() {
     if (!terminalId) return;
     const iso = new Date().toISOString();
-    await withMergedStore((s) => {
+
+    const applyOffline = (s: TerminalStore): TerminalStore => {
       const existing = s.terminals?.[terminalId];
       if (!existing) return s;
       return {
         terminals: {
           ...(s.terminals ?? {}),
-          [terminalId]: { ...existing, status: "offline", last_update: iso },
+          [terminalId]: { ...existing, status: "offline" as const, last_update: iso },
         },
       };
-    });
+    };
+
+    // 第一次尝试：正常的 fetch → merge → save
+    try {
+      const latest = await fetchStore(giteeCfg);
+      const next = applyOffline(latest);
+      await saveStore(giteeCfg, next);
+      setStore(next);
+      saveCachedStore(next);
+      setLocalStatus("offline");
+      return;
+    } catch {
+      // 正常路径失败（网络异常等），降级使用本地缓存
+    }
+
+    // 第二次尝试：跳过 fetch，基于本地缓存直接写入
+    try {
+      const next = applyOffline(store);
+      await saveStore(giteeCfg, next);
+      setStore(next);
+      saveCachedStore(next);
+    } catch {
+      // 降级也失败，放弃
+    }
     setLocalStatus("offline");
   }
 
