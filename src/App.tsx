@@ -238,6 +238,16 @@ function App() {
   }
 
   /**
+   * 手动刷新：拉取最新远程数据，若当前设备在线则同时更新 GPS 位置
+   */
+  async function refreshAll() {
+    await pullStore();
+    if (localStatusRef.current === "online" && terminalId) {
+      await heartbeat();
+    }
+  }
+
+  /**
    * 退出在线列表
    * 将当前终端的 status 设为 "offline" 并更新 last_update 时间戳
    * 采用两级降级策略确保远程状态尽量写入成功：
@@ -423,8 +433,8 @@ function App() {
                 <div className="row spread">
                   <h2>在线终端</h2>
                   <div className="row">
-                    {/* 手动刷新按钮 */}
-                    <button onClick={() => void pullStore()} disabled={storeLoading}>
+                    {/* 手动刷新按钮：拉取最新数据，若在线则同时更新本机 GPS */}
+                    <button onClick={() => void refreshAll()} disabled={storeLoading}>
                       {storeLoading ? "刷新中…" : "刷新"}
                     </button>
                   </div>
