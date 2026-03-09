@@ -44,3 +44,17 @@ storeFile=/Users/yourname/usermgr-keystore.jks
 keyAlias=usermgr
 password=your_keystore_password
 ```
+
+## github action
+
+### Repository secrets
+
+对应本地的 keystore.properties 配置文件
+
+- ANDROID_KEY_ALIAS - keyAlias
+- ANDROID_KEY_PASSWORD - password
+- ANDROID_KEY_BASE64 -  `base64 -i storeFile`
+- VITE_GITEE_ACCESS_TOKEN
+- VITE_GITEE_GIST_ID
+- VITE_AMAP_KEY
+- VITE_AMAP_SECURITY_CODE
