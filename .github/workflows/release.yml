@@ -131,14 +131,15 @@ jobs:
           version=$PACKAGE_VERSION
           
           # 构建 universal release APK
-          pnpm tauri android build --apk
+          apk_path=src-tauri/gen/android/app/build/outputs/apk/universal/release
           universal_apk=sensortool_${version}_universal.apk
-          cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk $universal_apk
+          pnpm tauri android build
+          cp ${apk_path}/app-universal-release.apk $universial_apk
 
           # 构建 arm64 release APK
-          pnpm tauri android build --apk -t aarch64
           arm64_apk=sensortool_${version}_arm64.apk
-          cp src-tauri/gen/android/app/build/outputs/apk/arm64/release/app-arm64-release.apk $arm64_apk
+          pnpm tauri android build -t aarch64
+          cp ${apk_path}/app-universal-release.apk $arm64_apk
 
           echo "Built APK files:"
           ls -la *.apk
