@@ -1,72 +1,153 @@
 # tauri2mm
 
-基于 Tauri + React 的“多终端在线管理”应用，使用 Gitee Gist 作为远程存储来同步各终端在线状态。
+基于 **Tauri 2 + React + TypeScript** 的多终端在线状态管理应用。  
+项目通过 **Gitee Gist** 作为远程数据存储，结合 **高德地图** 可视化在线终端地理位置，支持桌面端与 Android 端运行。
 
-## 当前功能（参考 `src/App.tsx`）
+## 核心能力
 
-1. 多终端在线管理：通过 Gitee Gist 统一存储 `TerminalStore`，实现多设备在线状态共享；本地缓存远程数据，启动优先从缓存恢复，拉取成功后写回缓存。
+- 终端在线管理：Join / Exit 上下线，统一写入 Gitee Gist。
+- 在线状态计算：基于 `status + last_update + onlineTimeoutMinutes` 判断计算在线。
+- 终端信息展示：展示平台、型号、CPU、内存、GPS、更新时间。
+- 地图分布可视化：仅展示在线且有 GPS 的终端点位（高德 JS API）。
+- 设置与联通性测试：支持在设置页测试 Gitee / 高德配置是否可用。
+- 本地缓存恢复：启动时优先读取本地缓存，拉取成功后回写缓存。
 
-2. 终端加入/退出与刷新：`Join` 获取当前 GPS 并写入远程；`Exit` 将当前终端标记为离线并更新 `last_update`；在线状态下刷新会更新 GPS 与 `last_update` 作为心跳续约。
+## 技术栈
 
-3. 可视化与状态提示：在线终端列表展示平台、型号、CPU、内存、GPS 与最后更新时间；地图分布仅展示“在线且有 GPS”的终端（高德地图）；顶部横幅提示同步成功或错误信息。
+- 前端：React 19、TypeScript、Vite 7
+- 客户端：Tauri 2
+- Tauri 插件：Geolocation、Opener
+- Rust 侧：reqwest（访问 Gitee API）、serde/serde_json
+- 地图：`@amap/amap-jsapi-loader`
 
-4. 设置页：支持配置 Gitee 凭证、Gist 信息、高德地图 Key 等；
+## 目录结构
 
-## 本地桌面端开发
+```text
+tauri2mm/
+├─ src/                    # React 前端
+│  ├─ components/          # 页面组件（地图、设置页）
+│  └─ lib/                 # 设备信息、Gitee 同步、存储、类型定义
+├─ src-tauri/              # Tauri/Rust 后端与应用配置
+│  ├─ src/lib.rs           # Tauri commands（设备ID、平台信息、Gitee读写）
+│  └─ tauri.conf.json      # Tauri 构建配置
+├─ dev-mac.sh              # macOS 开发启动
+├─ dev-linux.sh            # Linux 开发启动
+└─ dev-windows.cmd         # Windows 开发启动
+```
 
-### mac
+## 快速开始
 
-`./dev-mac.sh`
+### 1) 环境准备
 
-### linux
+- Node.js（建议 LTS）
+- pnpm
+- Rust（`rustup` + `cargo`）
+- Tauri 2 对应系统依赖（Linux 需额外安装 webkit 等依赖）
 
-`./dev-linux.sh`
+### 2) 安装依赖
 
-### windows
+```bash
+pnpm install
+```
 
-`.\dev-windows.bat`
+### 3) 配置环境变量
 
-## 本地安卓移动端开发
+复制并填写 `.env.example`：
 
-1. 安装依赖
-`pnpm install`
+```env
+VITE_GITEE_ACCESS_TOKEN=
+VITE_GITEE_GIST_ID=
+VITE_GIST_FILE_NAME=app.json
+VITE_AMAP_KEY=
+VITE_AMAP_SECURITY_CODE=
+VITE_REFRESH_SECONDS=10
+VITE_ONLINE_TIMEOUT_MINUTES=60
+```
 
-2. 初始化安卓环境
-`pnpm tauri android init`
-`src-tauri/gen/android/app/build.gradle.kts`  文件需要获取 git 仓库上的替换本地自动生成的
+说明：
+- 若设置页填写了成对配置（Gitee: token+gistId；高德: key+securityCode），优先使用用户设置。
+- 若未填写完整，回退使用 `.env` 配置。
 
-3. 运行开发环境或打包
-开发：`pnpm run tauri android dev`；打包：`pnpm run tauri android build`。
+## 本地开发
 
-4. Android 签名说明
-新建文件 `src-tauri/gen/android/keystore.properties`
+### 桌面端（推荐）
+
+- macOS：`./dev-mac.sh`
+- Linux：`./dev-linux.sh`
+- Windows：`.\dev-windows.cmd`
+
+也可以直接使用：
+
+```bash
+pnpm tauri dev
+```
+
+### 前端单独调试
+
+```bash
+pnpm dev
+```
+
+## Android 开发与打包
+
+### 1) 初始化 Android 工程
+
+```bash
+pnpm tauri android init
+```
+
+### 2) Android 调试
+
+```bash
+pnpm tauri android dev
+```
+
+### 3) Android 构建
+
+```bash
+pnpm tauri android build
+```
+
+### 4) 签名配置
+
+在 `src-tauri/gen/android/keystore.properties` 写入：
 
 ```properties
 keyAlias=mytest
 password=your_keystore_password
-storeFile=/Users/yourname/mytest-keystore.jks
+storeFile=/path/to/your-keystore.jks
 ```
 
-生成 keystore（示例）：
+生成 keystore 示例：
 
 ```bash
 keytool -genkey -v -keystore ~/mytest-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mytest
 ```
 
-`keyAlias` 就是 `mytest`
-生成过程会需要输入密码，生成完成替换 `your_keystore_password`
-`storeFile` 替换成生成的文件地址
+## 数据模型与同步机制
 
-## github action
+- 远程存储结构：`TerminalStore = { terminals: Record<string, TerminalInfo> }`
+- 关键字段：`terminal_id / status / gps / last_update`
+- 写入策略：采用“先拉取最新，再合并写回”避免覆盖其他终端更新
+- 退出兜底：正常路径失败时，使用本地缓存进行离线状态回写
+- 关闭拦截：Tauri 窗口关闭前触发 `app-closing`，尽量完成离线写入后再退出
 
-### Repository secrets
+## 构建命令
 
-对应本地的 keystore.properties 配置文件
+```bash
+pnpm build
+```
 
-- ANDROID_KEY_ALIAS - keyAlias
-- ANDROID_KEY_PASSWORD - password
-- ANDROID_KEY_BASE64 -  `base64 -i storeFile`
-- VITE_GITEE_ACCESS_TOKEN
-- VITE_GITEE_GIST_ID
-- VITE_AMAP_KEY
-- VITE_AMAP_SECURITY_CODE
+## GitHub Actions（Android Release）
+
+工作流：`.github/workflows/release.yml`
+
+需要配置的 Repository Secrets：
+
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+- `ANDROID_KEY_BASE64`（keystore 文件 base64）
+- `VITE_GITEE_ACCESS_TOKEN`
+- `VITE_GITEE_GIST_ID`
+- `VITE_AMAP_KEY`
+- `VITE_AMAP_SECURITY_CODE`
