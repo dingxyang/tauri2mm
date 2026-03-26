@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All -NoRestart\")",
+      "Bash(powershell \"Stop-Process -Name ''emulator'' -Force -ErrorAction SilentlyContinue\")"
+    ]
+  }
+}
